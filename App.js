@@ -1,45 +1,67 @@
-import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Button, FlatList } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  FlatList,
+  Pressable,
+  StyleSheet,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NavigationContainer, useFocusEffect } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { StatusBar } from 'expo-status-bar';
 
-export default function App() {
+const STORAGE_KEY = 'notes';
+
+function ListPage({ navigation }) {
   const [text, setText] = useState('');
   const [notes, setNotes] = useState([]);
 
-  useEffect(() => {
-    async function loadNotes() {
-      try {
-        const savedNotes = await AsyncStorage.getItem('notes');
-        if (savedNotes) {
-          setNotes(JSON.parse(savedNotes));
+  useFocusEffect(
+    useCallback(() => {
+      const loadNotes = async () => {
+        try {
+          const savedNotes = await AsyncStorage.getItem(STORAGE_KEY);
+          if (savedNotes) {
+            setNotes(JSON.parse(savedNotes));
+          }
+        } catch (error) {
+          console.error('Error loading notes:', error);
         }
-      } catch (error) {
-        console.error("Error reading notes from AsyncStorage", error);
-      }
-    }
-    loadNotes();
-  }, []);
+      };
+      loadNotes();
+    }, [])
+  );
 
-  useEffect(() => {
-    async function saveNotes() {
-      try {
-        await AsyncStorage.setItem('notes', JSON.stringify(notes));
-        console.log('Notes saved successfully!');
-      } catch (error) {
-        console.error("Error saving notes to AsyncStorage", error);
-      }
+  const saveElement = async () => {
+    if (text.trim().length === 0) return; 
+    const newNote = { key: Date.now().toString(), name: text };
+    const updatedNotes = [...notes, newNote];
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedNotes));
+      setNotes(updatedNotes);
+      setText('');
+    } catch (error) {
+      console.error('Error saving note:', error);
     }
-    saveNotes();
-  }, [notes]);
+  };
 
-  // Handler to add a new note and clear the text input
-  function saveElement() {
-    // Create a new note and add it to the current list of notes. [...notes] is a  spread operator
-    setNotes([...notes, { key: notes.length.toString(), name: text }]);
-    // Clear the TextInput
-    setText('');
-  }
+  const renderItem = ({ item }) => {
+    let displayText = item.name;
+    if (displayText.length > 25) {
+      displayText = displayText.substring(0, 25) + '...';
+    }
+    return (
+      <Pressable
+        style={styles.noteItem}
+        onPress={() => navigation.navigate('DetailPage', { note: item })}
+      >
+        <Text style={styles.noteText}>{displayText}</Text>
+      </Pressable>
+    );
+  };
 
   const clearNotes = async () => {
     try {
@@ -51,50 +73,102 @@ export default function App() {
     }
   };
 
+
   return (
     <View style={styles.container}>
       <TextInput
         style={styles.input}
-        placeholder="Type something you filthy animal..."
-        onChangeText={setText}
+        placeholder="Skriv din note her..."
         value={text}
+        onChangeText={setText}
         onSubmitEditing={saveElement}
         returnKeyType='done'
       />
-       <View style={styles.buttonContainer}>
-        <Button title='Save Element' onPress={saveElement} />
-        <Button title='Clear Data' onPress={clearNotes} />
-      </View>
+      <Button title="Save Element" onPress={saveElement} />
+      <Button title='Clear Data' onPress={clearNotes}></Button>
       <FlatList
+        style={styles.flatList}
         data={notes}
-        renderItem={({ item }) => <Text>{item.name}</Text>}
+        keyExtractor={(item) => item.key}
+        renderItem={renderItem}
       />
       <StatusBar style="auto" />
     </View>
   );
 }
+
+function DetailPage({ route, navigation }) {
+  const { note } = route.params;
+  const [text, setText] = useState(note.name);
+
+  const saveNote = async () => {
+    try {
+      const storedNotes = await AsyncStorage.getItem(STORAGE_KEY);
+      const notes = storedNotes ? JSON.parse(storedNotes) : [];
+      const updatedNotes = notes.map((n) =>
+        n.key === note.key ? { ...n, name: text } : n
+      );
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedNotes));
+      navigation.goBack();
+    } catch (error) {
+      console.error('Error saving updated note:', error);
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <TextInput
+        style={styles.detailInput}
+        value={text}
+        onChangeText={setText}
+        multiline
+      />
+      <Button title="GEM" onPress={saveNote} />
+    </View>
+  );
+}
+
+const Stack = createNativeStackNavigator();
+
+export default function App() {
+  return (
+    <NavigationContainer>
+      <Stack.Navigator initialRouteName="ListPage">
+        <Stack.Screen name="ListPage" component={ListPage} options={{ title: 'Notes' }} />
+        <Stack.Screen name="DetailPage" component={DetailPage} options={{ title: 'Note Detail' }} />
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    // Change vertical alignment so items start at the top
-    justifyContent: 'flex-start',
-    // Add some padding from the top to push everything down
-    paddingTop: 60,
+    padding: 16,
   },
   input: {
-    width: '80%',
-    height: 40,
     borderColor: 'gray',
     borderWidth: 1,
-    paddingHorizontal: 8,
-    minWidth: 200,
+    padding: 8,
+    marginBottom: 8,
   },
-  buttonContainer: {
-    flexDirection: 'row',
-    width: '80%',
-    marginVertical: 10,
-    justifyContent:'space-around'
+  detailInput: {
+    borderColor: 'gray',
+    borderWidth: 1,
+    padding: 8,
+    height: 200,
+    textAlignVertical: 'top',
+    marginBottom: 8,
+  },
+  noteItem: {
+    padding: 8,
+    borderBottomColor: '#ccc',
+    borderBottomWidth: 1,
+  },
+  noteText: {
+    fontSize: 16,
+  },
+  flatList: {
+    marginTop: 16,
   },
 });
