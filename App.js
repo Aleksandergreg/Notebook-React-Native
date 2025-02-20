@@ -12,6 +12,24 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer, useFocusEffect } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+import { getFirestore, collection, addDoc } from 'firebase/firestore';
+
+// Define firebaseConfig BEFORE using it
+const firebaseConfig = {
+  apiKey: "AIzaSyA5Yw04254JP0Ge9fZtk71YkvmKmU2bb-s",
+  authDomain: "notebookapp-5720f.firebaseapp.com",
+  projectId: "notebookapp-5720f",
+  storageBucket: "notebookapp-5720f.firebasestorage.app",
+  messagingSenderId: "787281543542",
+  appId: "1:787281543542:web:f8aa1dc4ddfc13cdb07a57",
+  measurementId: "G-C0ZTTRM30X"
+};
+
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+const db = getFirestore(app);
 
 const STORAGE_KEY = 'notes';
 
@@ -36,12 +54,21 @@ function ListPage({ navigation }) {
   );
 
   const saveElement = async () => {
-    if (text.trim().length === 0) return; 
-    const newNote = { key: Date.now().toString(), name: text };
+    if (text.trim().length === 0) return;
+    const newNote = { 
+      key: Date.now().toString(), 
+      name: text,
+      createdAt: new Date().toISOString()  // Optional: include a timestamp
+    };
     const updatedNotes = [...notes, newNote];
     try {
+      // Save locally
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedNotes));
       setNotes(updatedNotes);
+      
+      // Save to Firebase Firestore
+      await addDoc(collection(db, "notes"), newNote);
+      
       setText('');
     } catch (error) {
       console.error('Error saving note:', error);
@@ -65,14 +92,13 @@ function ListPage({ navigation }) {
 
   const clearNotes = async () => {
     try {
-      await AsyncStorage.removeItem('notes');
+      await AsyncStorage.removeItem(STORAGE_KEY);
       setNotes([]); // Update state to clear notes from UI
       console.log('Notes cleared!');
     } catch (error) {
       console.error("Error clearing notes from AsyncStorage", error);
     }
   };
-
 
   return (
     <View style={styles.container}>
@@ -85,7 +111,7 @@ function ListPage({ navigation }) {
         returnKeyType='done'
       />
       <Button title="Save Element" onPress={saveElement} />
-      <Button title='Clear Data' onPress={clearNotes}></Button>
+      <Button title='Clear Data' onPress={clearNotes} />
       <FlatList
         style={styles.flatList}
         data={notes}
